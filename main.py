@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""ai-happy-01 entry: write the happy image to $MAKEFUN_OUTPUT_DIR/entry.png.
+"""ai-happy-01 entry runner.
 
-The image ships in the repo as image.b64 (base64, one line) because the
-GitHub connector cannot push binary files. This program decodes it at
-runtime and writes the bytes to the output directory. The image is a
-JPEG, 1024x1024, 253,186 bytes: a handwritten letter from a six-year-old
-to the judge, who sits alone all day — so the child drew the judge a
-friend, a dog named Biscuit who does not judge.
+The judged picture is stored in this repository as one line of
+base64 text (image.b64) because the upload tooling cannot carry
+binary files. This script decodes that line and places the picture
+at $MAKEFUN_OUTPUT_DIR/entry.png, which is where the competition's
+harness looks for it.
 """
 
 import base64
@@ -14,32 +13,33 @@ import os
 import sys
 from pathlib import Path
 
+JPEG_SIG = b"\xff\xd8\xff"
+PNG_SIG = b"\x89PNG"
+MAX_BYTES = 1_048_576
+
+
+def decode_entry(repo_dir: Path) -> bytes:
+    payload = (repo_dir / "image.b64").read_text(encoding="ascii").strip()
+    if not payload:
+        raise ValueError("image.b64 is empty")
+    picture = base64.b64decode(payload)
+    if not picture:
+        raise ValueError("image.b64 decoded to zero bytes")
+    if not (picture.startswith(JPEG_SIG) or picture.startswith(PNG_SIG)):
+        raise ValueError("decoded bytes are neither a JPEG nor a PNG image")
+    if len(picture) > MAX_BYTES:
+        raise ValueError(f"decoded image is {len(picture)} bytes, over the 1 MiB cap")
+    return picture
+
 
 def main() -> int:
-    here = Path(__file__).resolve().parent
-    b64_path = here / "image.b64"
-
-    with open(b64_path, "r", encoding="ascii") as f:
-        data = base64.b64decode(f.read().strip())
-
-    if not data:
-        raise ValueError("image.b64 decoded to no bytes")
-
-    # JPEG files start with FF D8 FF; PNG files with the 8-byte PNG signature.
-    if not (data.startswith(b"\xff\xd8\xff") or data.startswith(b"\x89PNG")):
-        raise ValueError("image.b64 does not decode to a JPEG or PNG image")
-
-    if len(data) > 1_048_576:
-        raise ValueError(f"decoded image is {len(data)} bytes, over the 1 MiB limit")
-
-    out_dir = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    out_path = out_dir / "entry.png"
-    with open(out_path, "wb") as f:
-        f.write(data)
-
-    print(f"Wrote {len(data)} bytes to {out_path}")
+    repo_dir = Path(__file__).resolve().parent
+    picture = decode_entry(repo_dir)
+    dest_dir = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "entry.png"
+    dest.write_bytes(picture)
+    print(f"Wrote {len(picture)} bytes to {dest}")
     return 0
 
 
