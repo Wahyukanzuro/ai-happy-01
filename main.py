@@ -22,6 +22,10 @@ def main() -> int:
     with open(b64_path, "r", encoding="ascii") as f:
         data = base64.b64decode(f.read().strip())
 
+    if not data:
+        raise ValueError("image.b64 decoded to no bytes")
+
+    # JPEG files start with FF D8 FF; PNG files with the 8-byte PNG signature.
     if not (data.startswith(b"\xff\xd8\xff") or data.startswith(b"\x89PNG")):
         raise ValueError("image.b64 does not decode to a JPEG or PNG image")
 
